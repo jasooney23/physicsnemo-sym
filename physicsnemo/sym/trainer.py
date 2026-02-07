@@ -52,7 +52,7 @@ class AdamMixin:
     """
 
     def adam_compute_gradients(
-        self, aggregator: nn.Module, global_optimizer_model: nn.Module, step: int
+        self, aggregator: nn.Module, global_optimizer_model: nn.Module, step: torch.Tensor
     ):
         loss, losses = 0, Counter({})
 
@@ -116,7 +116,7 @@ class AdaHessianMixin:
     """Special functions for training using the higher-order optimizer AdaHessian"""
 
     def adahess_compute_gradients(
-        self, aggregator: nn.Module, global_optimizer_model: nn.Module, step: int
+        self, aggregator: nn.Module, global_optimizer_model: nn.Module, step: torch.Tensor
     ):
         if self.amp_manager.enabled:
             raise NotImplementedError("AMP is not supported for this optimizer.")
@@ -159,7 +159,7 @@ class BFGSMixin:
     """Special functions for training using BFGS optimizer"""
 
     def bfgs_compute_gradients(
-        self, aggregator: nn.Module, global_optimizer_model: nn.Module, step: int
+        self, aggregator: nn.Module, global_optimizer_model: nn.Module, step: torch.Tensor
     ):
         # Dummy functioned used entirely just for logging purposes and storing
         # objects for internal BFGS updates. Gradients are not calc'd here for BFGS
@@ -259,7 +259,7 @@ class Trainer(AdamMixin, AdaHessianMixin, BFGSMixin):
                 "Switching amp_dtype to bfloat16, AutocastCPU only supports bfloat16"
             )
 
-    def compute_losses(self, step: int):
+    def compute_losses(self, step: torch.Tensor):
         raise NotImplementedError("Subclass of Constraint needs to implement this")
 
     def _compute_gradients(self):
@@ -646,7 +646,7 @@ class Trainer(AdamMixin, AdaHessianMixin, BFGSMixin):
 
                     # compute gradients
                     loss, losses = self.compute_gradients(
-                        self.aggregator, self.global_optimizer_model, step
+                        self.aggregator, self.global_optimizer_model, torch.tensor(step, device=self.device, dtype=torch.int64)
                     )
 
                     # take optimizer step
@@ -831,6 +831,13 @@ class Trainer(AdamMixin, AdaHessianMixin, BFGSMixin):
     def _cuda_graph_training_step(self, step: int):
         # Training step method for using cuda graphs
         # Warm up
+        
+        # define training step
+        if not hasattr(self, "cuda_graph_step"):
+            self.cuda_graph_step = torch.tensor(step, device=self.device, dtype=torch.int64)
+        else:
+            self.cuda_graph_step.fill_(step)
+
         if (step - self.initial_step) < self.cfg.cuda_graph_warmup:
             if (step - self.initial_step) == 0:
                 # Default stream for warm up
@@ -843,7 +850,7 @@ class Trainer(AdamMixin, AdaHessianMixin, BFGSMixin):
 
                 # # compute gradients
                 self.loss_static, self.losses_static = self.compute_gradients(
-                    self.aggregator, self.global_optimizer_model, step
+                    self.aggregator, self.global_optimizer_model, self.cuda_graph_step
                 )
             torch.cuda.current_stream().wait_stream(self.warmup_stream)
 
@@ -873,7 +880,7 @@ class Trainer(AdamMixin, AdaHessianMixin, BFGSMixin):
             with torch.cuda.graph(self.g):
                 # compute gradients
                 self.loss_static, self.losses_static = self.compute_gradients(
-                    self.aggregator, self.global_optimizer_model, step
+                    self.aggregator, self.global_optimizer_model, self.cuda_graph_step
                 )
 
             # take optimizer step
