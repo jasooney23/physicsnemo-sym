@@ -30,7 +30,9 @@ class CustomSum(Aggregator):
     def __init__(self, params, num_losses, weights=None):
         super().__init__(params, num_losses, weights)
 
-    def forward(self, losses: Dict[str, torch.Tensor], step: torch.Tensor) -> torch.Tensor:
+    def forward(
+        self, losses: Dict[str, torch.Tensor], step: torch.Tensor
+    ) -> torch.Tensor:
         """
         Aggregates the losses by summation
 
