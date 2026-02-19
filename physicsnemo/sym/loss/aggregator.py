@@ -78,7 +78,9 @@ class Sum(Aggregator):
     def __init__(self, params, num_losses, weights=None):
         super().__init__(params, num_losses, weights)
 
-    def forward(self, losses: Dict[str, torch.Tensor], step: torch.Tensor) -> torch.Tensor:
+    def forward(
+        self, losses: Dict[str, torch.Tensor], step: torch.Tensor
+    ) -> torch.Tensor:
         """
         Aggregates the losses by summation
 
@@ -125,7 +127,9 @@ class GradNorm(Aggregator):
             "init_losses", torch.zeros(self.num_losses, device=self.device)
         )
 
-    def forward(self, losses: Dict[str, torch.Tensor], step: torch.Tensor) -> torch.Tensor:
+    def forward(
+        self, losses: Dict[str, torch.Tensor], step: torch.Tensor
+    ) -> torch.Tensor:
         """
         Weights and aggregates the losses using the gradNorm algorithm
 
@@ -147,7 +151,9 @@ class GradNorm(Aggregator):
 
         # get initial losses on step 0
         for i, key in enumerate(losses.keys()):
-            self.init_losses[i] = torch.where(step == 0, losses[key].clone().detach(), self.init_losses[i])
+            self.init_losses[i] = torch.where(
+                step == 0, losses[key].clone().detach(), self.init_losses[i]
+            )
 
         with torch.no_grad():
             normalizer: torch.Tensor = self.num_losses / (torch.exp(self.lmbda).sum())
@@ -197,7 +203,9 @@ class ResNorm(Aggregator):
             "init_losses", torch.zeros(self.num_losses, device=self.device)
         )
 
-    def forward(self, losses: Dict[str, torch.Tensor], step: torch.Tensor) -> torch.Tensor:
+    def forward(
+        self, losses: Dict[str, torch.Tensor], step: torch.Tensor
+    ) -> torch.Tensor:
         """
         Weights and aggregates the losses using the ResNorm algorithm
 
@@ -219,7 +227,9 @@ class ResNorm(Aggregator):
 
         # get initial losses on step 0
         for i, key in enumerate(losses.keys()):
-            self.init_losses[i] = torch.where(step == 0, losses[key].clone().detach(), self.init_losses[i])
+            self.init_losses[i] = torch.where(
+                step == 0, losses[key].clone().detach(), self.init_losses[i]
+            )
 
         with torch.no_grad():
             normalizer: torch.Tensor = self.num_losses / (torch.exp(self.lmbda).sum())
@@ -265,7 +275,9 @@ class HomoscedasticUncertainty(Aggregator):
             torch.zeros(self.num_losses, device=self.device)
         )
 
-    def forward(self, losses: Dict[str, torch.Tensor], step: torch.Tensor) -> torch.Tensor:
+    def forward(
+        self, losses: Dict[str, torch.Tensor], step: torch.Tensor
+    ) -> torch.Tensor:
         """
         Weights and aggregates the losses using homoscedastic task uncertainty
 
@@ -329,7 +341,9 @@ class LRAnnealing(Aggregator):
             "lmbda_ema", torch.ones(self.num_losses, device=self.device)
         )
 
-    def forward(self, losses: Dict[str, torch.Tensor], step: torch.Tensor) -> torch.Tensor:
+    def forward(
+        self, losses: Dict[str, torch.Tensor], step: torch.Tensor
+    ) -> torch.Tensor:
         """
         Weights and aggregates the losses using the learning rate annealing algorithm
 
@@ -375,11 +389,13 @@ class LRAnnealing(Aggregator):
         # Update weights only every update_freq steps
         for i, key in enumerate(losses.keys()):
             with torch.no_grad():
-                weight_update = self.alpha * grads_mean[ref_idx] / (grads_mean[i] + self.eps)
+                weight_update = (
+                    self.alpha * grads_mean[ref_idx] / (grads_mean[i] + self.eps)
+                )
                 self.lmbda_ema[i] = torch.where(
                     (step % self.update_freq) == 0,
                     (1.0 - self.alpha) * self.lmbda_ema[i] + weight_update,
-                    self.lmbda_ema[i]
+                    self.lmbda_ema[i],
                 )
             loss += self.lmbda_ema[i].clone() * losses[key]
         return loss
@@ -400,7 +416,9 @@ class SoftAdapt(Aggregator):
             "prev_losses", torch.zeros(self.num_losses, device=self.device)
         )
 
-    def forward(self, losses: Dict[str, torch.Tensor], step: torch.Tensor) -> torch.Tensor:
+    def forward(
+        self, losses: Dict[str, torch.Tensor], step: torch.Tensor
+    ) -> torch.Tensor:
         """
         Weights and aggregates the losses using the original variant of the softadapt algorithm
 
@@ -424,7 +442,7 @@ class SoftAdapt(Aggregator):
         loss: torch.Tensor = torch.zeros_like(self.init_loss)
 
         losses_stacked: torch.Tensor = torch.stack(list(losses.values()))
-        
+
         # Loss when step = 0
         loss_step_zero: torch.Tensor = torch.zeros_like(self.init_loss)
         for i, key in enumerate(losses.keys()):
@@ -433,7 +451,9 @@ class SoftAdapt(Aggregator):
         # Loss when step > 0
         lmbda: torch.Tensor = torch.ones_like(self.prev_losses)
         lmbda_sum: torch.Tensor = torch.zeros_like(self.init_loss)
-        normalizer: torch.Tensor = (losses_stacked / (self.prev_losses + self.eps)).max()
+        normalizer: torch.Tensor = (
+            losses_stacked / (self.prev_losses + self.eps)
+        ).max()
         loss_softadapt: torch.Tensor = torch.zeros_like(self.init_loss)
         for i, key in enumerate(losses.keys()):
             with torch.no_grad():
@@ -479,7 +499,9 @@ class Relobralo(Aggregator):
             "lmbda_ema", torch.ones(self.num_losses, device=self.device)
         )
 
-    def forward(self, losses: Dict[str, torch.Tensor], step: torch.Tensor) -> torch.Tensor:
+    def forward(
+        self, losses: Dict[str, torch.Tensor], step: torch.Tensor
+    ) -> torch.Tensor:
         """
         Weights and aggregates the losses using the ReLoBRaLo algorithm
 
@@ -499,14 +521,15 @@ class Relobralo(Aggregator):
         # weigh losses
         losses = self.weigh_losses(losses, self.weights)
 
-
         # Loss when step = 0
         loss_step_zero: torch.Tensor = torch.zeros_like(self.init_loss)
         for i, key in enumerate(losses.keys()):
             loss_step_zero += losses[key]
-            self.init_losses[i] = torch.where(step == 0, losses[key].clone().detach(), self.init_losses[i])
+            self.init_losses[i] = torch.where(
+                step == 0, losses[key].clone().detach(), self.init_losses[i]
+            )
 
-        # Loss when step > 0 
+        # Loss when step > 0
         loss_relobralo: torch.Tensor = torch.zeros_like(self.init_loss)
         losses_stacked: torch.Tensor = torch.stack(list(losses.values()))
         normalizer_prev: torch.Tensor = (
@@ -537,7 +560,9 @@ class Relobralo(Aggregator):
                 )
                 lmbda_ema[i] += (1.0 - self.alpha) * lmbda_prev[i]
                 # only update if step > 0
-                self.lmbda_ema[i] = torch.where(step == 0, self.lmbda_ema[i], lmbda_ema[i])
+                self.lmbda_ema[i] = torch.where(
+                    step == 0, self.lmbda_ema[i], lmbda_ema[i]
+                )
             loss_relobralo += self.lmbda_ema[i].clone() * losses[key]
             self.prev_losses[i] = losses[key].clone().detach()
 
